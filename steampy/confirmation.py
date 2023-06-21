@@ -47,8 +47,8 @@ class ConfirmationExecutor:
         tag = Tag.ALLOW
         params = self._create_confirmation_params(tag.value)
         params['op'] = tag.value,
-        params['cid'] = confirmation.data_confid
-        params['ck'] = confirmation.data_key
+        params['cid'] = confirmation['id']
+        params['ck'] = confirmation['nonce']
         headers = {'X-Requested-With': 'XMLHttpRequest'}
         return self._session.get(self.CONF_URL + '/ajaxop', params=params, headers=headers).json()
 
@@ -56,28 +56,25 @@ class ConfirmationExecutor:
         confirmations = []
         confirmations_page = self._fetch_confirmations_page()
         soup = BeautifulSoup(confirmations_page.text, 'html.parser')
-        if soup.select('#mobileconf_empty'):
-            return confirmations
-        for confirmation_div in soup.select('#mobileconf_list .mobileconf_list_entry'):
-            _id = confirmation_div['id']
-            data_confid = confirmation_div['data-confid']
-            data_key = confirmation_div['data-key']
-            confirmations.append(Confirmation(_id, data_confid, data_key))
+        soup = json.loads(str(soup))
+        if('conf' in soup):
+            confirmations = soup['conf']
         return confirmations
 
     def _fetch_confirmations_page(self) -> requests.Response:
         tag = Tag.CONF.value
         params = self._create_confirmation_params(tag)
         headers = {'X-Requested-With': 'com.valvesoftware.android.steam.community'}
-        response = self._session.get(self.CONF_URL + '/conf', params=params, headers=headers)
+        response = self._session.get(self.CONF_URL + '/getlist', params=params, headers=headers)
         if 'Steam Guard Mobile Authenticator is providing incorrect Steam Guard codes.' in response.text:
             raise InvalidCredentials('Invalid Steam Guard file')
         return response
 
     def _fetch_confirmation_details_page(self, confirmation: Confirmation) -> str:
-        tag = 'details' + confirmation.id
+        tag = 'details' + confirmation['id']
         params = self._create_confirmation_params(tag)
-        response = self._session.get(self.CONF_URL + '/details/' + confirmation.id, params=params)
+        params['id'] = confirmation['id']
+        response = self._session.get(self.CONF_URL + '/detailspage/' + confirmation['id'], params=params)
         return response.json()['html']
 
     def _create_confirmation_params(self, tag_string: str) -> dict:
@@ -88,7 +85,7 @@ class ConfirmationExecutor:
                 'a': self._my_steam_id,
                 'k': confirmation_key,
                 't': timestamp,
-                'm': 'android',
+                'm': 'react',
                 'tag': tag_string}
 
     def _select_trade_offer_confirmation(self, confirmations: List[Confirmation], trade_offer_id: str) -> Confirmation:
